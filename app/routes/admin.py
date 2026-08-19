@@ -27,7 +27,7 @@ async def refill_teddi_pool(x_admin_key: str = Header(..., alias="X-TEDDI-Admin-
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
                 settings.ANU_API_URL,
-                params={"length": settings.ANU_BATCH_SIZE, "type": "hex16"}
+                params={"length": settings.ANU_BATCH_SIZE, "type": "hex16", "size": 16}
             )
             response.raise_for_status()
             payload = response.json()
