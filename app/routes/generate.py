@@ -15,7 +15,9 @@ class TEDDIGenerateResponse(BaseModel):
 
 async def validate_and_track_key(x_api_key: str = Header(...)):
     """Validate key, check expiry, enforce limits, and track usage."""
-    if not _pool:
+    # Check if database pool is initialized
+    if _pool is None:
+        logger.error("❌ Database pool is not initialized")
         raise HTTPException(status_code=503, detail="TEDDI Service Unavailable")
     
     async with _pool.acquire() as conn:
@@ -50,13 +52,14 @@ async def validate_and_track_key(x_api_key: str = Header(...)):
             )
             current_usage = 0
         else:
-            current_usage = row['usage_count']
+            current_usage = row['usage_count'] if row['usage_count'] is not None else 0
         
         # 4. Check monthly limit
-        if current_usage >= row['monthly_limit']:
+        monthly_limit = row['monthly_limit'] if row['monthly_limit'] is not None else 5000
+        if current_usage >= monthly_limit:
             raise HTTPException(
                 status_code=429, 
-                detail=f"Monthly request limit of {row['monthly_limit']} reached. Please upgrade your tier."
+                detail=f"Monthly request limit of {monthly_limit} reached. Please upgrade your tier."
             )
         
         # 5. Increment usage count
