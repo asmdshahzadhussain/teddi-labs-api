@@ -15,8 +15,8 @@ class TEDDIGenerateResponse(BaseModel):
 
 async def validate_and_track_key(x_api_key: str = Header(...)):
     """Validate key, check expiry, enforce limits, and track usage."""
-    # Get the pool dynamically
-    pool = get_pool()
+    # Get the pool dynamically (MUST use await)
+    pool = await get_pool()
     
     if pool is None:
         logger.error("❌ Database pool is not initialized")
