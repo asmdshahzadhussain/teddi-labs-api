@@ -22,16 +22,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.on_event("startup")
 async def startup():
     await init_teddi_db(settings.DATABASE_URL)
+
 
 @app.on_event("shutdown")
 async def shutdown():
     await close_teddi_db()
 
+
+# Register routes
 app.include_router(generate.router, tags=["TEDDI Entropy"])
 app.include_router(admin.router, tags=["TEDDI Admin"])
+
 
 @app.get("/")
 async def root():

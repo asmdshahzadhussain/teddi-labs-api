@@ -29,20 +29,18 @@ async def close_teddi_db():
         logger.info("🔒 TEDDI Labs: Database pool closed.")
 
 
-async def get_pool():
-    """Return the database pool (for dependency injection)."""
+async def get_db_pool():
+    """Return the database pool. Must be called after initialization."""
+    global _pool
+    if _pool is None:
+        raise Exception("Database pool not initialized")
     return _pool
 
 
 async def pop_teddi_entropy():
-    """
-    TEDDI Atomic Pop: Fetches one unused quantum block, locks it instantly,
-    and marks it as consumed. Handles 100+ concurrent requests with zero collisions.
-    """
-    if _pool is None:
-        raise Exception("TEDDI: Database pool not initialized")
-    
-    async with _pool.acquire() as conn:
+    """Pop one unused quantum seed."""
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
             WITH next_entropy AS (
@@ -66,12 +64,10 @@ async def pop_teddi_entropy():
 
 
 async def bulk_insert_teddi_entropy(hex_blocks: List[str]) -> int:
-    """TEDDI Bulk Loader: Efficiently inserts 100 fresh quantum seeds."""
-    if _pool is None:
-        raise Exception("TEDDI: Database pool not initialized")
-    
+    """Insert multiple quantum seeds."""
+    pool = await get_db_pool()
     records = [(str(uuid.uuid4()), h) for h in hex_blocks]
-    async with _pool.acquire() as conn:
+    async with pool.acquire() as conn:
         async with conn.transaction():
             await conn.executemany(
                 "INSERT INTO quantum_pool (id, raw_hex) VALUES ($1, $2)",
@@ -80,86 +76,6 @@ async def bulk_insert_teddi_entropy(hex_blocks: List[str]) -> int:
     return len(records)
 
 
-async def validate_api_key(key: str) -> bool:
-    """Check if an API key exists and is active in the database."""
-    if _pool is None:
-        logger.warning("⚠️ Database pool not initialized when validating API key")
-        return False
-    
-    try:
-        async with _pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT key_string FROM api_keys WHERE key_string = $1 AND is_active = true",
-                key
-            )
-            return row is not None
-    except Exception as e:
-        logger.error(f"❌ Error validating API key: {e}")
-        return False
-
-
-async def get_key_details(key: str):
-    """Fetch all details for a given API key."""
-    if _pool is None:
-        raise Exception("TEDDI: Database pool not initialized")
-    
-    async with _pool.acquire() as conn:
-        row = await conn.fetchrow(
-            """
-            SELECT key_string, client_name, is_active, expires_at, 
-                   monthly_limit, usage_count, last_reset_at
-            FROM api_keys 
-            WHERE key_string = $1
-            """,
-            key
-        )
-        return row
-
-
-async def increment_usage(key: str) -> int:
-    """Increment usage count for a given API key and return the new count."""
-    if _pool is None:
-        raise Exception("TEDDI: Database pool not initialized")
-    
-    async with _pool.acquire() as conn:
-        result = await conn.fetchrow(
-            "UPDATE api_keys SET usage_count = usage_count + 1 WHERE key_string = $1 RETURNING usage_count",
-            key
-        )
-        return result["usage_count"] if result else 0
-
-
-async def reset_usage(key: str):
-    """Reset usage count for a given API key (called monthly)."""
-    if _pool is None:
-        raise Exception("TEDDI: Database pool not initialized")
-    
-    async with _pool.acquire() as conn:
-        await conn.execute(
-            "UPDATE api_keys SET usage_count = 0, last_reset_at = NOW() WHERE key_string = $1",
-            key
-        )
-
-
-async def create_api_key(client_name: str) -> str:
-    """Create a new API key with default Pro limits."""
-    if _pool is None:
-        raise Exception("TEDDI: Database pool not initialized")
-    
-    import secrets
-    import string
-    
-    alphabet = string.ascii_uppercase + string.digits
-    random_suffix = ''.join(secrets.choice(alphabet) for _ in range(8))
-    new_key = f"TEDDI_PROD_{random_suffix}"
-    
-    async with _pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO api_keys (key_string, client_name, is_active, monthly_limit, expires_at)
-            VALUES ($1, $2, true, 5000, NOW() + INTERVAL '30 days')
-            """,
-            new_key, client_name
-        )
-    
-    return new_key
+async def get_pool_dependency():
+    """Dependency that provides the database pool to routes."""
+    return await get_db_pool()
