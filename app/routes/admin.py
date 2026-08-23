@@ -4,7 +4,7 @@ import secrets
 import string
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
-from app.db.pool import bulk_insert_teddi_entropy, _pool
+from app.db.pool import bulk_insert_teddi_entropy
 from app.core.config import settings
 
 router = APIRouter()
@@ -33,6 +33,11 @@ async def refill_teddi_pool(x_admin_key: str = Header(..., alias="X-TEDDI-Admin-
         logger.warning("🚫 Unauthorized /refill attempt")
         raise HTTPException(status_code=403, detail="Invalid TEDDI Admin Key")
 
+    from app.db.pool import _pool as db_pool
+    
+    if db_pool is None:
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
@@ -60,16 +65,15 @@ async def refill_teddi_pool(x_admin_key: str = Header(..., alias="X-TEDDI-Admin-
         logger.exception(f"TEDDI Refill critical error: {e}")
         raise HTTPException(status_code=500, detail="TEDDI Refill failed")
 
-
 # ==========================================
 # GET /health (Checks database connection)
 # ==========================================
 @router.get("/health")
 async def teddi_health():
-    if _pool is None:
+    from app.db.pool import _pool as db_pool
+    if db_pool is None:
         return {"status": "error", "detail": "Database not initialized"}
     return {"status": "operational", "service": "TEDDI Labs Quantum EaaS"}
-
 
 # ==========================================
 # POST /admin/create-key (Onboard clients)
@@ -83,7 +87,9 @@ async def create_customer_key(
         logger.warning("🚫 Unauthorized key creation attempt")
         raise HTTPException(status_code=403, detail="Invalid TEDDI Admin Key")
 
-    if _pool is None:
+    from app.db.pool import _pool as db_pool
+    
+    if db_pool is None:
         logger.error("❌ Database pool is None")
         raise HTTPException(status_code=503, detail="Database not initialized")
 
@@ -92,7 +98,7 @@ async def create_customer_key(
     new_key = f"TEDDI_PROD_{random_suffix}"
 
     try:
-        async with _pool.acquire() as conn:
+        async with db_pool.acquire() as conn:
             await conn.execute(
                 "INSERT INTO api_keys (key_string, client_name, is_active) VALUES ($1, $2, true)",
                 new_key, client_name
