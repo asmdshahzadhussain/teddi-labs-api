@@ -1,4 +1,4 @@
-import asyncpg  # ✅ CORRECT — not asynccpp
+import asyncpg
 import uuid
 import logging
 from typing import List, Optional
@@ -6,14 +6,14 @@ from typing import List, Optional
 logger = logging.getLogger(__name__)
 
 # Global connection pool
-_pool: Optional[asyncpg.Pool] = None  # ✅ CORRECT
+_pool: Optional[asyncpg.Pool] = None
 
 
 async def init_teddi_db(dsn: str):
     """Initialize the database connection pool."""
     global _pool
     if not _pool:
-        _pool = await asyncpg.create_pool(dsn, min_size=2, max_size=10)  # ✅ CORRECT
+        _pool = await asyncpg.create_pool(dsn, min_size=2, max_size=10)
         logger.info("✅ TEDDI Labs: Database pool initialized.")
 
 
@@ -26,10 +26,13 @@ async def close_teddi_db():
 
 
 async def pop_teddi_entropy():
-    """Pop one unused quantum seed."""
-    if _pool is None:
+    """
+    TEDDI Atomic Pop: Fetches one unused quantum block, locks it instantly,
+    and marks it as consumed.
+    """
+    if not _pool:
         raise Exception("TEDDI: Database pool not initialized")
-    
+
     async with _pool.acquire() as conn:
         row = await conn.fetchrow(
             """
@@ -54,10 +57,10 @@ async def pop_teddi_entropy():
 
 
 async def bulk_insert_teddi_entropy(hex_blocks: List[str]) -> int:
-    """Insert multiple quantum seeds."""
-    if _pool is None:
+    """TEDDI Bulk Loader: Efficiently inserts fresh quantum seeds."""
+    if not _pool:
         raise Exception("TEDDI: Database pool not initialized")
-    
+
     records = [(str(uuid.uuid4()), h) for h in hex_blocks]
     async with _pool.acquire() as conn:
         async with conn.transaction():
@@ -70,7 +73,7 @@ async def bulk_insert_teddi_entropy(hex_blocks: List[str]) -> int:
 
 async def validate_api_key(key: str) -> bool:
     """Check if an API key exists and is active."""
-    if _pool is None:
+    if not _pool:
         return False
     async with _pool.acquire() as conn:
         row = await conn.fetchrow(
