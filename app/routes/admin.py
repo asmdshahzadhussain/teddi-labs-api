@@ -2,14 +2,13 @@ import logging
 import httpx
 import secrets
 import string
-from fastapi import APIRouter, HTTPException, Header, status
+from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 from app.db.pool import bulk_insert_teddi_entropy, _pool
 from app.core.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
 
 # ==========================================
 # RESPONSE MODELS
@@ -24,7 +23,6 @@ class TEDDIKeyResponse(BaseModel):
     api_key: str
     client_name: str
     message: str
-
 
 # ==========================================
 # POST /refill (For YOUR cron job)
@@ -64,15 +62,17 @@ async def refill_teddi_pool(x_admin_key: str = Header(..., alias="X-TEDDI-Admin-
 
 
 # ==========================================
-# GET /health (For cron-job.org)
+# GET /health (Checks database connection)
 # ==========================================
 @router.get("/health")
 async def teddi_health():
+    if _pool is None:
+        return {"status": "error", "detail": "Database not initialized"}
     return {"status": "operational", "service": "TEDDI Labs Quantum EaaS"}
 
 
 # ==========================================
-# POST /admin/create-key (For onboarding clients)
+# POST /admin/create-key (Onboard clients)
 # ==========================================
 @router.post("/admin/create-key", response_model=TEDDIKeyResponse)
 async def create_customer_key(
@@ -83,18 +83,23 @@ async def create_customer_key(
         logger.warning("🚫 Unauthorized key creation attempt")
         raise HTTPException(status_code=403, detail="Invalid TEDDI Admin Key")
 
+    if _pool is None:
+        logger.error("❌ Database pool is None")
+        raise HTTPException(status_code=503, detail="Database not initialized")
+
     alphabet = string.ascii_uppercase + string.digits
     random_suffix = ''.join(secrets.choice(alphabet) for _ in range(8))
     new_key = f"TEDDI_PROD_{random_suffix}"
 
-    if not _pool:
-        raise HTTPException(status_code=503, detail="Database not initialized")
-
-    async with _pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO api_keys (key_string, client_name, is_active) VALUES ($1, $2, true)",
-            new_key, client_name
-        )
+    try:
+        async with _pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO api_keys (key_string, client_name, is_active) VALUES ($1, $2, true)",
+                new_key, client_name
+            )
+    except Exception as e:
+        logger.error(f"❌ Database error: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
     return TEDDIKeyResponse(
         status="success",

@@ -9,6 +9,7 @@ from app.routes import generate, admin
 
 logging.basicConfig(level=logging.INFO)
 
+# Disable ALL docs (Swagger, ReDoc, OpenAPI)
 app = FastAPI(
     title=settings.API_TITLE,
     description=settings.API_DESCRIPTION,
@@ -18,6 +19,7 @@ app = FastAPI(
     openapi_url=None
 )
 
+# CORS - Allow all origins for API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,43 +28,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 @app.on_event("startup")
 async def startup():
-    """Initialize the database connection pool on startup."""
-    try:
-        await init_teddi_db(settings.DATABASE_URL)
-        logging.info("✅ Database connection established successfully.")
-    except Exception as e:
-        logging.error(f"❌ Failed to connect to database: {e}")
-        raise e
-
+    await init_teddi_db(settings.DATABASE_URL)
 
 @app.on_event("shutdown")
 async def shutdown():
-    """Close the database connection pool on shutdown."""
     await close_teddi_db()
 
-
+# Register API routes
 app.include_router(generate.router, tags=["TEDDI Entropy"])
 app.include_router(admin.router, tags=["TEDDI Admin"])
 
-
+# Serve landing page at root
 @app.get("/", response_class=HTMLResponse)
 async def landing_page():
-    """Serve the landing page."""
     html_path = os.path.join(os.path.dirname(__file__), "..", "landing", "index.html")
     try:
         with open(html_path, "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
         return HTMLResponse("<h1>TEDDI Labs</h1><p>Landing page not found.</p>", status_code=404)
-
-
-@app.get("/health")
-async def health():
-    """Simple health check to verify database connectivity."""
-    from app.db.pool import _pool
-    if _pool is None:
-        return {"status": "error", "detail": "Database not initialized"}
-    return {"status": "operational", "service": "TEDDI Labs Quantum EaaS"}
