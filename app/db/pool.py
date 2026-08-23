@@ -1,4 +1,4 @@
-import asyncpg
+import asyncpg  # ✅ CORRECT — not asynccpp
 import uuid
 import logging
 from typing import List, Optional
@@ -6,14 +6,14 @@ from typing import List, Optional
 logger = logging.getLogger(__name__)
 
 # Global connection pool
-_pool: Optional[asyncpg.Pool] = None
+_pool: Optional[asyncpg.Pool] = None  # ✅ CORRECT
 
 
 async def init_teddi_db(dsn: str):
     """Initialize the database connection pool."""
     global _pool
     if not _pool:
-        _pool = await asyncpg.create_pool(dsn, min_size=2, max_size=10)
+        _pool = await asyncpg.create_pool(dsn, min_size=2, max_size=10)  # ✅ CORRECT
         logger.info("✅ TEDDI Labs: Database pool initialized.")
 
 
@@ -66,3 +66,15 @@ async def bulk_insert_teddi_entropy(hex_blocks: List[str]) -> int:
                 records
             )
     return len(records)
+
+
+async def validate_api_key(key: str) -> bool:
+    """Check if an API key exists and is active."""
+    if _pool is None:
+        return False
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT key_string FROM api_keys WHERE key_string = $1 AND is_active = true",
+            key
+        )
+        return row is not None
