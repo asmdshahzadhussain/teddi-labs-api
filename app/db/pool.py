@@ -13,7 +13,12 @@ async def init_teddi_db(dsn: str):
     """Initialize the database connection pool."""
     global _pool
     if not _pool:
-        _pool = await asyncpg.create_pool(dsn, min_size=2, max_size=10)
+        _pool = await asyncpg.create_pool(
+            dsn,
+            min_size=2,
+            max_size=10,
+            statement_cache_size=0  # <--- CRITICAL FIX for Supabase Pooler
+        )
         logger.info("✅ TEDDI Labs: Database pool initialized.")
 
 
