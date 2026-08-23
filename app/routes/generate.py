@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Header, status
 from pydantic import BaseModel
-from app.db.pool import pop_teddi_entropy, get_pool_dependency
+from app.db.pool import pop_teddi_entropy, _pool
 from app.core.mapper import hex_to_teddi_password
 
 router = APIRouter()
@@ -14,16 +14,13 @@ class TEDDIGenerateResponse(BaseModel):
     entropy_id: str
 
 
-async def validate_and_track_key(
-    x_api_key: str = Header(...),
-    pool = Depends(get_pool_dependency)
-):
+async def validate_and_track_key(x_api_key: str = Header(...)):
     """Validate key, check expiry, enforce limits, and track usage."""
-    if pool is None:
+    if _pool is None:
         logger.error("❌ Database pool is not initialized")
         raise HTTPException(status_code=503, detail="TEDDI Service Unavailable")
     
-    async with pool.acquire() as conn:
+    async with _pool.acquire() as conn:
         # Fetch key details
         row = await conn.fetchrow(
             """

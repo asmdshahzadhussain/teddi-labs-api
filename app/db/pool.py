@@ -13,12 +13,8 @@ async def init_teddi_db(dsn: str):
     """Initialize the database connection pool."""
     global _pool
     if not _pool:
-        try:
-            _pool = await asyncpg.create_pool(dsn, min_size=2, max_size=10)
-            logger.info("✅ TEDDI Labs: Database pool initialized.")
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize database pool: {e}")
-            raise e
+        _pool = await asyncpg.create_pool(dsn, min_size=2, max_size=10)
+        logger.info("✅ TEDDI Labs: Database pool initialized.")
 
 
 async def close_teddi_db():
@@ -29,18 +25,12 @@ async def close_teddi_db():
         logger.info("🔒 TEDDI Labs: Database pool closed.")
 
 
-async def get_db_pool():
-    """Return the database pool. Must be called after initialization."""
-    global _pool
-    if _pool is None:
-        raise Exception("Database pool not initialized")
-    return _pool
-
-
 async def pop_teddi_entropy():
     """Pop one unused quantum seed."""
-    pool = await get_db_pool()
-    async with pool.acquire() as conn:
+    if _pool is None:
+        raise Exception("TEDDI: Database pool not initialized")
+    
+    async with _pool.acquire() as conn:
         row = await conn.fetchrow(
             """
             WITH next_entropy AS (
@@ -65,17 +55,14 @@ async def pop_teddi_entropy():
 
 async def bulk_insert_teddi_entropy(hex_blocks: List[str]) -> int:
     """Insert multiple quantum seeds."""
-    pool = await get_db_pool()
+    if _pool is None:
+        raise Exception("TEDDI: Database pool not initialized")
+    
     records = [(str(uuid.uuid4()), h) for h in hex_blocks]
-    async with pool.acquire() as conn:
+    async with _pool.acquire() as conn:
         async with conn.transaction():
             await conn.executemany(
                 "INSERT INTO quantum_pool (id, raw_hex) VALUES ($1, $2)",
                 records
             )
     return len(records)
-
-
-async def get_pool_dependency():
-    """Dependency that provides the database pool to routes."""
-    return await get_db_pool()
